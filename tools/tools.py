@@ -114,12 +114,12 @@ def LoadTrees(
     return trim_data(data)
 
 
-def Train(
+def TrainSOM(
     train_set,
-    s_features,
-    n_neurons,
-    m_neurons,
-    max_iter,
+    s_features = [4,5,6,8,9,13,14],
+    n_neurons = 10,
+    m_neurons = 10,
+    max_iter = 1000,
     sigma = 1. ,
     learning_rate = .2, 
     neighborhood_function = 'gaussian',
@@ -127,10 +127,33 @@ def Train(
     topology = 'rectangular',
     activation_distance = 'euclidean',
 ):
+	flat_data = []
+	features = np.array(list(train_set.keys()))
+	
+	for i in range(0,len(features)):
+	    flat_data.append(train_set.iloc[:,i].to_numpy())
+	X = np.array(flat_data)[s_features]
+	X = np.array(X).T
+	
+	scaled_X = (X - np.nanmean(X, axis=0)) / np.nanstd(X, axis=0) 
+	som = MiniSom(n_neurons, m_neurons, len(scaled_X[0]), activation_distance=activation_distance, 
+	      sigma=sigma, learning_rate=learning_rate, topology=topology,
+	      neighborhood_function=neighborhood_function, random_seed=random_seed)
+	som.pca_weights_init(scaled_X)
+	som.train(scaled_X, max_iter, verbose=True)  # random training    
+	q_error = som.quantization_error(scaled_X)
+	
+	with open(base_directory+'som-'+training_no+'.p', 'wb') as outfile:
+    		pickle.dump(som, outfile)
 
+def GetWinningNeurons(
+	
+):
 
+def GetNormalisedExcess(
+	
+):
 
-
-
-
-
+def GetPatternSpectrum(
+	
+):
