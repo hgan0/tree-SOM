@@ -1,12 +1,19 @@
 from pathlib import Path
 from tqdm.notebook import tqdm
 from astropy.io import fits
-from minisom import MiniSom  
+from minisom import MiniSom
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import image as mpimg
+from joblib import Parallel, delayed
+from joblib_progress import joblib_progress
 
 import os
 import pandas as pd
 import minisom 
 import pickle
+import random
+import time
 
 def lscale(x):
     x = np.abs(x)
