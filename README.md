@@ -1,3 +1,3 @@
-# Develop a delay spectrum diagnosis tool for CHIME
+# Develop a data explorative tool 
 
-Using self-organising vector attribute maps and pattern spectra to diagnose delay spectra of CHIME data 
+Using self-organising vector attribute maps and pattern spectra to diagnose images
