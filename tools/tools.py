@@ -559,3 +559,56 @@ def PlotNormalisedSelfOrganisedPS(
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
     fig.colorbar(im, cax=cbar_ax)
     fig.suptitle('normalised ' + attribute + ' pattern spectra')
+
+
+
+def PlotExcessNeurons(
+    base_directory,
+    n_neurons,
+    m_neurons,
+    attribute = 'flux', # flux or gval 
+    upper_limit = 2.0, # sigma
+    lower_limit = 2.0, # sigma
+    tree_extension = 'csv'  
+):
+    
+    file_names = sorted(Path(base_directory+'/trees/').glob("*."+tree_extension))
+    n_x = round(np.sqrt(len(file_names)))
+    nfigs = len(file_names)
+    n_y = round(nfigs / n_x)
+
+    excess_table = pd.read_csv(base_directory+'/excess_tables/excess.csv',
+                           sep=',', header=0, low_memory=False)
+    cubes = []
+    for file in file_names:
+        par = attribute
+        img1 = np.zeros(n_neurons*m_neurons).reshape((n_neurons, m_neurons))
+        for nx in range(0,n_neurons):
+            for ny in range(0,m_neurons):
+                mask_id = excess_table['id'] == file.stem
+                mask_x = excess_table['winning_Nx'] == nx
+                mask_y = excess_table['winning_Ny'] == ny            
+                img1[n_neurons-1-ny,nx] = excess_table[mask_id&mask_x&mask_y]['excess_'+par].values[0]       
+        m1 = ma.masked_where(img1 <= upper_limit, img1).mask
+        m2 = ma.masked_where(img1 >= -1 * np.abs(lower_limit), img1).mask
+        new = ma.masked_array(img1, m1 & m2)
+        cubes.append(new)
+        
+    kwargs = {"extent": (0,n_neurons,0,m_neurons), "vmin": -3, "vmax": 3, "cmap":'RdBu_r'}
+
+    fig, axes = plt.subplots(n_y, n_x, figsize=(8, 6), 
+                             sharex=True, sharey=True, gridspec_kw={"wspace": 0.03, "hspace": 0.3})
+    for ii, axis in enumerate(axes.ravel()):
+        if ii < nfigs :
+            name = file_names[ii].stem
+            im = axis.imshow(cubes[ii], **kwargs)
+            axis.set_title(name, fontsize=9)
+            if ii % n_x == 0 : 
+                axis.set_ylabel('N_y')
+            if ii // n_x == n_y - 1 : 
+                axis.set_xlabel('N_x')
+                
+    fig.subplots_adjust(right=0.90)
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+    fig.colorbar(im, cax=cbar_ax)
+    fig.suptitle('Excess neurons in '+ attribute + ' pattern spectra \n' + '('+ '>'+str(upper_limit)+'\u03C3 and <-' +str(lower_limit)+'\u03C3 )')
