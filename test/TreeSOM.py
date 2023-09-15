@@ -29,7 +29,22 @@ def trim_data(data):
     new_data = new_data.replace(np.nan, 0)
     new_data = new_data.astype(float)
     return new_data 
+    
+def CleanupBaseDirectory(
+    base_directory,
+    disccofanSOM_directory,
+):
+    command = 'rm -r ' + base_directory
+    os.system('rm -r ' + disccofanSOM_directory + '/SOMs/')
+    for folder in ['/SOMs/', '/filtered/', '/excess_tables/', '/sum_tables/','/plots/']:
+        os.system(command + folder)
+        
+def CleanupTemp(
+    disccofanSOM_directory,
+):
+    os.system('rm -r ' + disccofanSOM_directory + '/SOMs/*.csv')
 
+        
 def LoadImageDirectory(
     img_directory: str, 
     extension: str
@@ -69,8 +84,8 @@ def CreateTrees(
     disccofan_directory: str,
     base_directory: str,
     n_thread = 1, 
-    c = 8,
-    a = 12,
+    n_connectivity = 8,
+    n_attributes = 12,
     lval = 100,
 ):
     """
@@ -103,11 +118,56 @@ def CreateTrees(
         filename = file.stem
         filedir = os.path.splitext(file)[0]
         outname = base_directory + '/trees/' + filename
-        command = '%s -g 1,1,1 --threads %d  -c %d  -a %d  --inprefix %s --intype %s -o treeCSV --outprefix %s -l %d'%(disccofan_directory, n_thread, c, a, filedir, extension, outname, lval)
+        command = '%s -g 1,1,1 --threads %d  -c %d  -a %d  --inprefix %s --intype %s -o treeCSV --outprefix %s -l %d'%(disccofan_directory, n_thread, n_connectivity, n_attributes, filedir, extension, outname, lval)
         try: 
             os.system(command)
         except:
             print("Failed to create a tree..!")
+
+def CreateSingleTree(
+    imagefile,
+    extension: str,
+    disccofan_directory: str,
+    base_directory: str,
+    n_thread = 1, 
+    n_connectivity = 8,
+    n_attributes = 12,
+    lval = 100,
+):
+    os.makedirs(base_directory + '/trees/', exist_ok=True) 
+    disccofan_directory = disccofan_directory + '/disccofan'
+
+    filename = Path(imagefile).stem
+    filedir = os.path.splitext(Path(imagefile))[0]
+    outname = base_directory + '/trees/' + filename
+    command = '%s -g 1,1,1 --threads %d  -c %d  -a %d  --inprefix %s --intype %s -o treeCSV --outprefix %s -l %d'%(disccofan_directory, n_thread, n_connectivity, n_attributes, filedir, extension, outname, lval)
+    try: 
+        os.system(command)
+    except:
+        print("Failed to create a tree..!")
+            
+            
+            
+def CreateTrees_in_Parallel(
+    imagefiles,
+    extension: str,
+    disccofan_directory: str,
+    base_directory: str,
+    n_thread = 1, 
+    n_connectivity = 8,
+    n_attributes = 12,
+    lval = 100,
+):    
+    with joblib_progress("Creating trees..."):
+        element_run = Parallel(n_jobs=-1)(delayed(CreateSingleTree)(
+            image,
+            extension,
+            disccofan_directory,
+            base_directory,
+            n_thread, 
+            n_connectivity,
+            n_attributes, 
+            lval) for image in imagefiles )        
             
 def ShowImages(
     imagefiles
@@ -120,11 +180,19 @@ def ShowImages(
     fig.subplots_adjust(hspace = .1, wspace=.05)
     axs = axs.ravel()
     
-    for ii, img_i in enumerate(imagefiles):
-        #fig.add_subplot(rows, columns, ii+1)
-        axs[ii].imshow(mpimg.imread(img_i), cmap='Greys_r') #cv2.imread(img_i))
-        axs[ii].axis('off')
-        axs[ii].set_title(img_i.stem)
+    # for ii, img_i in enumerate(imagefiles):
+    #     #fig.add_subplot(rows, columns, ii+1)
+    #     axs[ii].imshow(mpimg.imread(img_i), cmap='Greys_r') #cv2.imread(img_i))
+    #     axs[ii].axis('off')
+    #     axs[ii].set_title(img_i.stem)       
+    for ii, ax in enumerate(axs):
+        if ii < len(imagefiles):
+            img_i = imagefiles[ii]
+            ax.imshow(mpimg.imread(img_i), cmap='Greys_r') #cv2.imread(img_i))
+            ax.axis('off')
+            ax.set_title(img_i.stem)
+        else:
+            ax.axis('off')
     plt.show()
     
     
@@ -213,46 +281,44 @@ def TrainSOM(
     
 def GetWinningNeurons(
     base_directory,
+    filename,
     s_features,
     n_neurons,
     m_neurons,
     tree_extension = 'csv'
 ):
-    tree_directory = base_directory + '/trees/' 
-    file_names = sorted(Path(tree_directory).glob("*."+tree_extension))
-    
+    tree_directory = base_directory + '/trees/'     
     with open(base_directory+'/som.p', 'rb') as infile:
         som = pickle.load(infile)    
 
-    for file in file_names:
-        filename = file.stem
-        single_data = pd.read_csv(file, sep=',', header=0, low_memory=False) 
-        single_data = trim_data(single_data)
-        features = np.array(list(single_data.keys()))
+    tree = Path(tree_directory + filename + '.' + tree_extension)
+    data = pd.read_csv(tree, sep=',', header=0, low_memory=False) 
+    data = trim_data(data)
+    features = np.array(list(data.keys()))
 
-        n_columns = np.shape(single_data)[-1]
-        flat_data = []
+    n_columns = np.shape(data)[-1]
+    flat_data = []
 
-        for i in range(0,len(features)):
-            flat_data.append(single_data.iloc[:,i].to_numpy())
+    for i in range(0,len(features)):
+        flat_data.append(data.iloc[:,i].to_numpy())
 
-        X = np.array(flat_data)[s_features]
-        X = np.array(X).T
-        scaled_X = (X - np.mean(X, axis=0)) / np.std(X, axis=0)  
+    X = np.array(flat_data)[s_features]
+    X = np.array(X).T
+    scaled_X = (X - np.mean(X, axis=0)) / np.std(X, axis=0)  
 
-        W = som.get_weights()
-        w_x, w_y = zip(*[som.winner(d) for d in scaled_X])
-        w_x = np.array(w_x)
-        w_y = np.array(w_y)  
+    W = som.get_weights()
+    w_x, w_y = zip(*[som.winner(d) for d in scaled_X])
+    w_x = np.array(w_x)
+    w_y = np.array(w_y)  
 
-        df2 =  pd.DataFrame({'index': flat_data[0],
-               'winning_Nx': w_x,
-               'winning_Ny': w_y,
-                            })
-        os.makedirs(base_directory+'/SOMs/', exist_ok=True)  
-        df2 = df2.loc[:, ~df2.columns.str.contains('^Unnamed')]
-        df2 = df2.astype(int)
-        df2.to_csv(base_directory+'/SOMs/'+filename+'.csv') 
+    df2 =  pd.DataFrame({'index': flat_data[0],
+           'winning_Nx': w_x,
+           'winning_Ny': w_y,
+                        })
+    os.makedirs(base_directory+'/SOMs/', exist_ok=True)  
+    df2 = df2.loc[:, ~df2.columns.str.contains('^Unnamed')]
+    df2 = df2.astype(int)
+    df2.to_csv(base_directory+'/SOMs/'+filename+'.csv') 
 
 def GetWinningNeurons_in_Parallel(
     base_directory,
@@ -262,12 +328,12 @@ def GetWinningNeurons_in_Parallel(
     tree_extension = 'csv'
 ):
     tree_directory = base_directory + '/trees/' 
-    file_names = sorted(Path(tree_directory).glob("*."+tree_extension))
+    tree_files = sorted(Path(tree_directory).glob("*."+tree_extension))
     
     with joblib_progress("Calculating winning neurons..."):
         element_run = Parallel(n_jobs=-1)(delayed(GetWinningNeurons)(
-            base_directory, s_features, n_neurons, m_neurons, 
-            tree_extension = 'csv') for k in file_names )
+            base_directory, tree.stem, s_features, n_neurons, m_neurons, 
+            tree_extension = 'csv') for tree in tree_files )
         
 def CreateGValueFluxTables(
     base_directory,
@@ -567,16 +633,16 @@ def PlotNormalisedSelfOrganisedPS(
     fig.subplots_adjust(right=0.90)
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
     fig.colorbar(im, cax=cbar_ax)
-    fig.suptitle('normalised ' + attribute + ' pattern spectra')
+    fig.suptitle('Normalised ' + attribute + ' pattern spectra')
     
     
 def PlotExcessNeurons(
     base_directory,
     n_neurons,
     m_neurons,
+    upper_limit, # sigma
+    lower_limit, # sigma
     attribute = 'flux', # flux or gval 
-    upper_limit = 2.0, # sigma
-    lower_limit = 2.0, # sigma
     tree_extension = 'csv'  
 ):
     
@@ -616,7 +682,255 @@ def PlotExcessNeurons(
             if ii // n_x == n_y - 1 : 
                 axis.set_xlabel('N_x')
                 
-    fig.subplots_adjust(right=0.90)
+    fig.subplots_adjust(left=0.08, bottom=0.13, right=0.95, top=0.9, wspace=0.26, hspace=0.1)
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
     fig.colorbar(im, cax=cbar_ax)
-    fig.suptitle('excess neurons in ' + attribute + ' pattern spectra')
+    fig.suptitle('Excess neurons in ' + attribute + ' pattern spectra')
+    os.makedirs(base_directory + '/plots/', exist_ok=True)
+    fig.savefig(base_directory + '/plots/' + 'excess_neurons_' + attribute + '_ps' + '.pdf')    
+
+def FilterImageFromNeuron(
+    filename,
+    base_directory,
+    disccofanSOM_directory,
+    n_neurons,
+    m_neurons,
+    nx, 
+    ny,
+    n_connectivity = 8,
+    n_attributes = 12,
+    image_extension = 'jpg'
+):
+    somfile = base_directory + '/SOMs/' + filename + '.csv'
+    copy_directory = disccofanSOM_directory + '/SOMs/'
+    os.makedirs(copy_directory, exist_ok=True)
+    
+    copied_somfile = './SOMs/' + filename + '.csv'
+    outdir = base_directory + '/filtered/' + filename + '/'
+    outname = outdir + str(nx) + ',' + str(ny)
+    os.makedirs(outdir, exist_ok=True)
+    
+    path_to_file = outname + '.' + image_extension
+    path = Path(path_to_file)
+
+    if path.is_file():
+        print("Filtered image already exists!")
+    else:     
+        command1 = 'cp -p '+ somfile + ' ' + copy_directory
+        command2 = '%s/disccofan -g 1,1,1 --threads 1  -c %d  -a %d \
+        --inprefix %s --intype %s -o som --somsize %d --somfile %s --somneuron %d,%d \
+        --outprefix %s --outtype %s'%(disccofanSOM_directory, n_connectivity, n_attributes, base_directory + '/images/' + filename, image_extension, n_neurons, copied_somfile, nx, ny, outname, image_extension)
+
+        try: 
+            sompathfile = disccofanSOM_directory + '/SOMs/' + filename + '.csv'
+            sompath = Path(sompathfile)
+            if path.is_file():
+                os.system(command2)
+            else:     
+                os.system(command1+" && "+command2)
+
+        except:
+            print("Image filtering failed.....!!")
+            
+            
+def GetExcessNeurons(
+    base_directory,
+    n_neurons,
+    m_neurons,
+    upper_limit, # sigma
+    lower_limit, # sigma
+    attribute = 'flux', # flux or gval 
+    tree_extension = 'csv'  
+):
+    
+    file_names = sorted(Path(base_directory+'/trees/').glob("*."+tree_extension))
+    excess_table = pd.read_csv(base_directory+'/excess_tables/excess.csv',
+                           sep=',', header=0, low_memory=False)
+    cubes = []
+    for file in file_names:
+        par = attribute
+        neurons = []
+        for nx in range(0,n_neurons):
+            for ny in range(0,m_neurons):
+                mask_id = excess_table['id'] == file.stem
+                mask_x = excess_table['winning_Nx'] == nx
+                mask_y = excess_table['winning_Ny'] == ny    
+                tmp = excess_table[mask_id&mask_x&mask_y]['excess_'+par].values[0]
+                
+                if tmp == np.nan:
+                    continue
+                elif tmp >= upper_limit or tmp <= -1*np.abs(lower_limit) :
+                    neurons.append([nx,ny])
+        cubes.append(neurons) 
+    return cubes
+            
+
+def FilterAllExcessNeurons(
+    base_directory,
+    disccofanSOM_directory,
+    n_neurons,
+    m_neurons,
+    upper_limit, # sigma
+    lower_limit, # sigma
+    attribute = 'flux',
+    tree_extension = 'csv',
+    n_connectivity = 8,
+    n_attributes = 12,
+    image_extension = 'jpg'
+):
+    excess_neurons = GetExcessNeurons(
+    base_directory, n_neurons, m_neurons, upper_limit, lower_limit, attribute, tree_extension,)
+    imagefiles = sorted(Path(base_directory+'/images/').glob("*."+image_extension))
+    CleanupTemp(disccofanSOM_directory)
+    
+    for ii, neurons in enumerate(excess_neurons):    
+        filename = imagefiles[ii].stem
+        if len(neurons) != 0 : 
+            with joblib_progress("Filtering "+ filename):
+                element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
+                    filename,
+                    base_directory,
+                    disccofanSOM_directory,
+                    n_neurons,
+                    m_neurons,
+                    nx = neuron[0], 
+                    ny = neuron[1],
+                    n_connectivity = n_connectivity,
+                    n_attributes = n_attributes,
+                    image_extension = image_extension) for neuron in neurons )
+    print('Filtering completed!')
+    
+def PlotExcessNeuronsFilteredImage(
+    base_directory,
+    n_neurons,
+    m_neurons,
+    upper_limit, 
+    lower_limit, 
+    attribute = 'flux',
+    tree_extension = 'csv',
+    image_extension = 'jpg'
+):
+
+    excess_neurons = GetExcessNeurons(
+    base_directory, n_neurons, m_neurons, upper_limit, lower_limit, attribute, tree_extension,)
+        
+    filenames = sorted(Path(base_directory+'/images/').glob("*."+image_extension))
+    
+    for ii, neurons in enumerate(excess_neurons):    
+        filename = filenames[ii].stem
+        if len(neurons) != 0 :        
+            columns = round(np.sqrt(len(filenames)))
+            rows = round(len(neurons) / columns + 0.499)
+            
+            fig, axs = plt.subplots(rows, columns, figsize=(3.3 * columns, 2.7 * rows) )
+            fig.subplots_adjust(left=0.08, bottom=0.13, right=0.95, top=0.9, wspace=0.26, hspace=0.1)
+            axs = axs.ravel()
+            
+            for ii, ax in enumerate(axs):
+                if ii < len(neurons):
+                    neuron = neurons[ii]
+                    img_i = base_directory + '/filtered/' + filename + '/' + str(neuron[0]) + ',' + str(neuron[1]) +'.'+image_extension
+                    ax.imshow(mpimg.imread(img_i), cmap='Greys_r') #cv2.imread(img_i))
+                    ax.axis('off')
+                    ax.set_title('(' + Path(img_i).stem + ')' )
+                else:
+                    ax.axis('off')
+                plt.suptitle(filename)
+            os.makedirs(base_directory + '/plots/', exist_ok=True)
+            fig.savefig(base_directory + '/plots/' + 'excess_neurons_' + filename + '.pdf')  
+            
+def CompareSingleNeuronFilteredImages(
+    base_directory,
+    disccofanSOM_directory,
+    n_neurons,
+    m_neurons,
+    nx,
+    ny,
+    n_connectivity = 8,
+    n_attributes = 12,
+    image_extension = 'jpg'
+):
+    CleanupTemp(disccofanSOM_directory)
+    filenames = sorted(Path(base_directory+'/images/').glob("*."+image_extension))
+    with joblib_progress("Filtering neuron ("+ str(nx) + ',' + str(ny) +')' ):
+        element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
+            filename = filename.stem,
+            base_directory = base_directory,
+            disccofanSOM_directory = disccofanSOM_directory,
+            n_neurons = n_neurons,
+            m_neurons = m_neurons,
+            nx = nx, 
+            ny = ny,
+            n_connectivity = n_connectivity,
+            n_attributes = n_attributes,
+            image_extension = image_extension) for filename in filenames )    
+    print('Filtering completed!')
+    
+    columns = round(np.sqrt(len(filenames)))
+    rows = round(np.sqrt(len(filenames)))
+
+    fig, axs = plt.subplots(rows, columns, figsize=(4.4 * columns, 3.6 * rows) )
+    fig.subplots_adjust(left=0.08, bottom=0.13, right=0.95, top=0.9, wspace=0.26, hspace=0.1)
+    axs = axs.ravel()
+
+    for ii, ax in enumerate(axs):
+        img_i = base_directory + '/filtered/' + filenames[ii].stem + '/' + str(nx) + ',' + str(ny) +'.'+image_extension
+        if Path(img_i).is_file:
+            ax.imshow(mpimg.imread(img_i), cmap='Greys_r') #cv2.imread(img_i))
+        ax.axis('off')
+        ax.set_title(filenames[ii].stem, fontsize=14)
+        plt.suptitle('Neuron (' + str(nx) + ',' + str(ny) +')', fontsize=17)
+    os.makedirs(base_directory + '/plots/', exist_ok=True)
+    fig.savefig(base_directory + '/plots/' + 'comparison_(' + str(nx) + ',' + str(ny) +')' + '.pdf')  
+    
+    
+def FilterAllNeuronsInOneImage(
+    base_directory,
+    disccofanSOM_directory,
+    filename,
+    n_neurons,
+    m_neurons,
+    n_connectivity = 8,
+    n_attributes = 12,
+    image_extension = 'jpg'
+):
+    CleanupTemp(disccofanSOM_directory)
+    for nx in range(0,n_neurons):
+        with joblib_progress("Filtering "+ filename):
+            element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
+                filename,
+                base_directory,
+                disccofanSOM_directory,
+                n_neurons,
+                m_neurons,
+                nx = nx, 
+                ny = ny,
+                n_connectivity = n_connectivity,
+                n_attributes = n_attributes,
+                image_extension = image_extension) for ny in range(0,m_neurons) )    
+    print('Filtering completed!')
+    
+    
+def PlotAllNeuronsInOneImage(
+    base_directory,
+    filename,
+    n_neurons,
+    m_neurons,
+    image_extension = 'jpg'
+):
+    columns = n_neurons
+    rows = m_neurons
+
+    fig, axs = plt.subplots(rows, columns, figsize=(2.04 * columns, 1.6 * rows) )
+    fig.subplots_adjust(hspace = 0, wspace = 0, top=0.92, bottom=0.05, left=0.03, right=0.95)
+
+    for nx in range(0,n_neurons):
+        for ny in range(0,m_neurons):        
+            img_i = base_directory + '/filtered/' + filename + '/' + str(nx) + ',' + str(ny) +'.'+image_extension
+            if Path(img_i).is_file():
+                axs[m_neurons-ny-1,nx].imshow(mpimg.imread(img_i), cmap='Greys_r') #cv2.imread(img_i))
+            axs[m_neurons-ny-1,nx].axis('off')
+            axs[m_neurons-ny-1,nx].set_title('(' + Path(img_i).stem + ')', fontsize=14, color='white',y=0.7)
+    plt.suptitle(filename, fontsize = 20)
+    os.makedirs(base_directory + '/plots/', exist_ok=True)
+    plt.savefig(base_directory + '/plots/' + 'Filtered_SOM_' + filename + '.pdf')
