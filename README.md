@@ -53,7 +53,7 @@ TreeSOM.CreateTrees_in_Parallel(imagefiles,
 ```
 
 Load (sampled) vector attributes from nodes of the max trees. 
-`tree_selecting_rate` indicates the rate of trees that will be loaded among the total data sets and `sampling_rate` indicates the sampling rate within each tree. 
+`tree_selecting_rate` indicates the fraction of trees to load from the entire data sets and `sampling_rate` indicates the fraction of nodes to load within each tree. 
 
 ```python
 train_set = TreeSOM.LoadTrees(
@@ -65,7 +65,7 @@ train_set = TreeSOM.LoadTrees(
 
 ```
 
-Set parameters for the self-organising map training and train. 
+Set parameters for the self-organising map training and train a SOM. 
 
 ```python
 n_neurons = 15
