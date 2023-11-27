@@ -172,16 +172,14 @@ def CreateSingleTree(
     try:
         tree_file = Path(outname + '.csv')
         my_abs_path = tree_file.resolve(strict=True)
-        print("Tree exists for " + filename)
+        #print("Tree exists for " + filename)
     except FileNotFoundError:
         # tree doesn't exist    
         try: 
             os.system(command)
         except:
             print("Failed to create a tree..!")
-            
-            
-            
+                                    
 def CreateTrees_in_Parallel(
     imagefiles,
     extension: str,
@@ -193,45 +191,96 @@ def CreateTrees_in_Parallel(
     n_attributes = 12,
     lval = 100,
 ):    
-    with joblib_progress("Creating trees..."):
-        element_run = Parallel(n_jobs=-1)(delayed(CreateSingleTree)(
-            image,
-            extension,
-            disccofan_directory,
-            base_directory,
-            tree_directory,
-            n_thread, 
-            n_connectivity,
-            n_attributes, 
-            lval,) for image in imagefiles )        
+
+    element_run = Parallel(n_jobs=-1)(delayed(CreateSingleTree)(
+        image,
+        extension,
+        disccofan_directory,
+        base_directory,
+        tree_directory,
+        n_thread, 
+        n_connectivity,
+        n_attributes, 
+        lval,) for image in tqdm(imagefiles) )        
             
 def ShowImages(
     imagefiles,
     base_directory,
+    file_idx = 0,
+    cmap='Greys_r',
 ):
-    # setting values to rows and column variables
-    rows = round(np.sqrt(len(imagefiles)))
-    columns = round(np.sqrt(len(imagefiles)))
+    file_name, file_extension = os.path.splitext(imagefiles[0])
     
-    fig, axs = plt.subplots(rows, columns, figsize=(10, 8) )
-    fig.subplots_adjust(hspace = .1, wspace=.05)
-    axs = axs.ravel()
-          
-    for ii, ax in enumerate(axs):
-        if ii < len(imagefiles):
-            img_i = imagefiles[ii]
-            ax.imshow(mpimg.imread(img_i), cmap='Greys_r') #cv2.imread(img_i))
-            ax.axis('off')
-            ax.set_title(img_i.stem)
-        else:
-            ax.axis('off')
-    os.makedirs(base_directory + '/plots/', exist_ok=True)
-    fig.tight_layout()
-    plt.savefig(base_directory + '/plots/' + 'original_img.pdf')
-    plt.show()
+    if np.sqrt(len(imagefiles)) < 5: 
+        # setting values to rows and column variables
+        rows = round(np.sqrt(len(imagefiles)))
+        columns = round(np.sqrt(len(imagefiles)))
+
+        fig, axs = plt.subplots(rows, columns, figsize=(10, 8) )
+        fig.subplots_adjust(hspace = .1, wspace=.05)
+        axs = axs.ravel()
+        kwargs = {"origin": "lower", "aspect": "auto", "cmap": cmap, "vmin": -9, "vmax": -5, }
+        
+        for ii, ax in enumerate(axs):
+            if ii < len(imagefiles):
+                img_i = imagefiles[ii]
+                if file_extension[1:] == 'fits':
+                    image = fits.getdata(img_i)
+                    ax.imshow(image, **kwargs)
+                else: 
+                    ax.imshow(mpimg.imread(img_i), **kwargs) #cv2.imread(img_i))
+                ax.axis('off')
+                ax.set_title(img_i.stem)
+            else:
+                ax.axis('off')
+        os.makedirs(base_directory + '/plots/', exist_ok=True)
+        fig.tight_layout()
+        plt.savefig(base_directory + '/plots/' + 'original_img'+ str(file_idx) +'.pdf')
+        plt.show()
+    else: 
+        print("Too many images to plot, use ShowImages_in_Parallel instead!")
+
+def ShowImages_in_Parallel(
+    imagefiles,
+    base_directory,
+    cmap='Greys_r',
+):
+    n_imag = 4
+    nn = len(imagefiles) // (n_imag ** 2)
     
+    # for n_plot in range(0,nn+1):
+    #     n_start = n_plot * n_imag ** 2
+    #     n_end = (n_plot+1) * n_imag ** 2
+    #     selected_files = imagefiles[n_start:n_end]
+        
+#    with joblib_progress("Plotting images to process..."):
+    element_run = Parallel(n_jobs=-1)(delayed(ShowImages)(
+    imagefiles[(n_plot * n_imag ** 2):((n_plot+1) * n_imag ** 2)],
+    base_directory,
+    n_plot,
+    cmap,) for n_plot in tqdm(range(0,nn+1)) )  
+
     
-def LoadTrees(
+def LoadSelectedTrees(
+    base_directory : str,
+    tree_directory,
+    selected_ids,
+    extension = "csv", 
+    tree_selecting_rate = 1.0,
+    sampling_rate = 1.0,  
+):
+    data = pd.DataFrame()    
+    for obsv_id in tqdm(selected_ids):
+        tree_file = Path(tree_directory+'/'+str(obsv_id)+"."+extension)
+        tmp = pd.read_csv(tree_file, sep=',', header=0, low_memory=False #).sample(frac = sampling_rate) # --> too slow
+                          , skiprows=lambda i: i>0 and random.random() > sampling_rate) 
+        tmp = trim_data(tmp)     
+        #sampled_tmp = tmp.sample(n = round(len(tmp.index)*sampling_rate) )
+        data = pd.concat([data, tmp], ignore_index=True)
+    print(str(len(data)) + ' nodes are loaded in total!')
+    return data
+
+def LoadAllTrees(
     base_directory : str,
     tree_directory,
     extension = "csv", 
@@ -268,20 +317,20 @@ def LoadSingleTree(
     data = pd.concat([data, sampled_tmp], ignore_index=True)
     return data
 
-def LoadTrees_in_Parallel(
-    treefile,
-    base_directory : str,
-    extension = "csv", 
-    sampling_rate = 1.0,
-):
-    data = pd.DataFrame()
-    with joblib_progress("Creating trees..."):
-        element_run = Parallel(n_jobs=-1)(delayed(LoadSingleTree)(
-        treefile,
-        base_directory,
-        extension = "csv",
-        sampling_rate = 1.0,) for image in imagefiles )  
-        data = pd.concat([data, sampled_tmp], ignore_index=True)
+# def LoadTrees_in_Parallel(
+#     treefile,
+#     base_directory : str,
+#     extension = "csv", 
+#     sampling_rate = 1.0,
+# ):
+#     data = pd.DataFrame()
+#     with joblib_progress("Creating trees..."):
+#         element_run = Parallel(n_jobs=-1)(delayed(LoadSingleTree)(
+#         treefile,
+#         base_directory,
+#         extension = "csv",
+#         sampling_rate = 1.0,) for image in imagefiles )  
+#         data = pd.concat([data, sampled_tmp], ignore_index=True)
     
 def TrainSOM(
     train_set,
@@ -402,10 +451,10 @@ def GetWinningNeurons_in_Parallel(
 
     tree_files = sorted(Path(tree_directory).glob("*."+tree_extension))
     
-    with joblib_progress("Calculating winning neurons..."):
-        element_run = Parallel(n_jobs=-1)(delayed(GetWinningNeurons)(
-            base_directory, tree_directory, tree.stem, s_features, n_neurons, m_neurons, 
-            tree_extension = 'csv') for tree in tree_files )
+#    with joblib_progress("Calculating winning neurons..."):
+    element_run = Parallel(n_jobs=-1)(delayed(GetWinningNeurons)(
+        base_directory, tree_directory, tree.stem, s_features, n_neurons, m_neurons, 
+        tree_extension = 'csv') for tree in tqdm(tree_files) )
         
 def CreateGValueFluxTables(
     base_directory,
@@ -588,10 +637,10 @@ def CreateGValueFluxTables_in_Parallel(
 ):
     tree_files = sorted(Path(tree_directory).glob("*."+tree_extension))
     
-    with joblib_progress("Creating gvalue and flux tables..."):
-        element_run = Parallel(n_jobs=-1)(delayed(CreateGValueFluxTables_Single)(
-            base_directory, tree_directory, treefile, n_neurons, m_neurons, 
-            tree_extension = 'csv') for treefile in tree_files )
+#    with joblib_progress("Creating gvalue and flux tables..."):
+    element_run = Parallel(n_jobs=-1)(delayed(CreateGValueFluxTables_Single)(
+        base_directory, tree_directory, treefile, n_neurons, m_neurons, 
+        tree_extension = 'csv') for treefile in tqdm(tree_files) )
 
         
 def my_read_csv(filename):
@@ -864,10 +913,10 @@ def GetNormalisedExcess_in_Parallel(
 ):
     tree_files = sorted(Path(tree_directory).glob("*."+tree_extension))
     
-    with joblib_progress("Creating normalised excess..."):
-        element_run = Parallel(n_jobs=-1)(delayed(GetNormalisedExcess_Single)(
-            base_directory, treefile, n_neurons, m_neurons,
-            tree_extension = 'csv') for treefile in tree_files )
+#    with joblib_progress("Creating normalised excess..."):
+    element_run = Parallel(n_jobs=-1)(delayed(GetNormalisedExcess_Single)(
+        base_directory, treefile, n_neurons, m_neurons,
+        tree_extension = 'csv') for treefile in tqdm(tree_files) )
         
 def CombineExcessTables(
     base_directory,
@@ -908,10 +957,10 @@ def PlotNormalisedSelfOrganisedPS_in_Parallel(
                 img1[n_neurons-1-ny,nx] = excess_table[mask_id&mask_x&mask_y]['excess_'+par].values[0]
         cubes.append(img1)
     
-    with joblib_progress("Creating normalised self organising PS..."):
-        element_run = Parallel(n_jobs=-1)(delayed(GetNormalisedExcess_Single)(
-            base_directory, treefile, n_neurons, m_neurons,
-            tree_extension = 'csv') for treefile in tree_files )
+#    with joblib_progress("Creating normalised self organising PS..."):
+    element_run = Parallel(n_jobs=-1)(delayed(GetNormalisedExcess_Single)(
+        base_directory, treefile, n_neurons, m_neurons,
+        tree_extension = 'csv') for treefile in tqdm(tree_files) )
     
 
 def PlotExcessPS(
@@ -1160,18 +1209,18 @@ def FilterAllExcessNeurons(
     for ii, neurons in enumerate(excess_neurons):    
         filename = imagefiles[ii].stem
         if len(neurons) != 0 : 
-            with joblib_progress("Filtering "+ filename):
-                element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
-                    filename,
-                    base_directory,
-                    disccofanSOM_directory,
-                    n_neurons,
-                    m_neurons,
-                    nx = neuron[0], 
-                    ny = neuron[1],
-                    n_connectivity = n_connectivity,
-                    n_attributes = n_attributes,
-                    image_extension = image_extension) for neuron in neurons )
+#            with joblib_progress("Filtering "+ filename):
+            element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
+                filename,
+                base_directory,
+                disccofanSOM_directory,
+                n_neurons,
+                m_neurons,
+                nx = neuron[0], 
+                ny = neuron[1],
+                n_connectivity = n_connectivity,
+                n_attributes = n_attributes,
+                image_extension = image_extension) for neuron in tqdm(neurons) )
     print('Filtering completed!')
     
 def PlotExcessNeuronsFilteredImage(
@@ -1229,18 +1278,18 @@ def CompareSingleNeuronFilteredImages(
 ):
     CleanupTemp(disccofanSOM_directory)
     filenames = sorted(Path( image_directory + '/' ).glob("*."+image_extension))
-    with joblib_progress("Filtering neuron ("+ str(nx) + ',' + str(ny) +')' ):
-        element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
-            filename = filename.stem,
-            base_directory = base_directory,
-            disccofanSOM_directory = disccofanSOM_directory,
-            n_neurons = n_neurons,
-            m_neurons = m_neurons,
-            nx = nx, 
-            ny = ny,
-            n_connectivity = n_connectivity,
-            n_attributes = n_attributes,
-            image_extension = image_extension) for filename in filenames )    
+#    with joblib_progress("Filtering neuron ("+ str(nx) + ',' + str(ny) +')' ):
+    element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
+        filename = filename.stem,
+        base_directory = base_directory,
+        disccofanSOM_directory = disccofanSOM_directory,
+        n_neurons = n_neurons,
+        m_neurons = m_neurons,
+        nx = nx, 
+        ny = ny,
+        n_connectivity = n_connectivity,
+        n_attributes = n_attributes,
+        image_extension = image_extension) for filename in tqdm(filenames) )    
     print('Filtering completed!')
     
     columns = round(np.sqrt(len(filenames)))
@@ -1274,18 +1323,18 @@ def FilterAllNeuronsInOneImage(
 ):
     CleanupTemp(disccofanSOM_directory)
     for nx in range(0,n_neurons):
-        with joblib_progress("Filtering "+ filename):
-            element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
-                filename,
-                base_directory,
-                disccofanSOM_directory,
-                n_neurons,
-                m_neurons,
-                nx = nx, 
-                ny = ny,
-                n_connectivity = n_connectivity,
-                n_attributes = n_attributes,
-                image_extension = image_extension) for ny in range(0,m_neurons) )    
+#        with ("Filtering "+ filename):
+        element_run = Parallel(n_jobs=-1)(delayed(FilterImageFromNeuron)(
+            filename,
+            base_directory,
+            disccofanSOM_directory,
+            n_neurons,
+            m_neurons,
+            nx = nx, 
+            ny = ny,
+            n_connectivity = n_connectivity,
+            n_attributes = n_attributes,
+            image_extension = image_extension) for ny in tqdm(range(0,m_neurons)) )    
     print('Filtering completed!')
     
     
