@@ -118,26 +118,26 @@ def CreateTrees(
     """
     Parameters (for details see https://github.com/sgazagnes/disccofan) 
     ----------
-    c (connectivity) : Type of connectivity:
-    4:  4 connectivity for 2D dataset (default for 2D)
-    6:  6 connectivity for 3D dataset (default for 3D)
-    8:  8 connectivity for 2D dataset
-           26: 26 connectivity for 3D dataset
-        a (attributes) : Choose the attribute used in the tree nodes
-    0: Area (default)
-    1: Area of min enclosing rectangle
-    2: Square of diagonal of minimal enclosing rectangle
-    3: Moment of inertia
-    4: (Moment of Inertia) / (area)^2
-    5: Mean X position
-    6: Mean Y position
-    7: Mean Z position
-    8 - Full inertia: area (same as attribute 0)
-    9 - Full inertia: elongation
-    10 - Full inertia: flatness
-    11 - Full inertia: sparseness
-    12 - Full inertia: Ncompactness
-        lval (lambda value) : Threshold value for pruning
+    n_connectivity : Type of connectivity:
+        4:  4 connectivity for 2D dataset (default for 2D)
+        6:  6 connectivity for 3D dataset (default for 3D)
+        8:  8 connectivity for 2D dataset
+        26: 26 connectivity for 3D dataset
+    n_attributes : Choose the attribute used in the tree nodes
+        0: Area (default)
+        1: Area of min enclosing rectangle
+        2: Square of diagonal of minimal enclosing rectangle
+        3: Moment of inertia
+        4: (Moment of Inertia) / (area)^2
+        5: Mean X position
+        6: Mean Y position
+        7: Mean Z position
+        8 - Full inertia: area (same as attribute 0)
+        9 - Full inertia: elongation
+        10 - Full inertia: flatness
+        11 - Full inertia: sparseness
+        12 - Full inertia: Ncompactness
+    lval (lambda value) : Threshold value for pruning
     """
     os.makedirs(tree_directory, exist_ok=True) 
     disccofan_directory = disccofan_directory + '/disccofan'
